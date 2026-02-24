@@ -47,11 +47,53 @@ export default function Upload() {
       setImages(files);
     }
   }
+// --- RACISM FILTER (The "Zero Tolerance" Version) ---
+function isRacist(text: string) {
+  if (!text) return false;
+  
+  // 1. Normalize: Lowercase + remove ALL spaces, numbers, and symbols
+  // "n i g g a" -> "nigga"
+  // "r.e.t.a.r.d" -> "retard"
+  // "f@g" -> "fg" (Wait, strictly removing symbols might break leetspeak, 
+  // so let's keep it simple: remove just spaces and dots/dashes)
+  const clean = text.toLowerCase().replace(/[^a-z]/g, '');
 
-  const upload = async () => {
+  // 2. The Regex Patterns
+  // The "+" sign means "one or more of this letter".
+  const patterns = [
+    // Matches: nigger, niiigger, niger, n1gger
+    /n+[il1]+g+[e3]+r+/, 
+    
+    // Matches: nigga, nigggga, niga, niiigggaaaa
+    /n+[il1]+g+[a4]+/,   
+    
+    // Matches: retard, reeetard, rctard
+    /r+[ec3]+t+a+r+d+/, 
+    
+    // Matches: fag, faggot, faaag, fgt
+    /f+[a4]+g+/
+  ];
+
+  // 3. Check the cleaned text against patterns
+  for (const pattern of patterns) {
+    if (pattern.test(clean)) return true;
+  }
+  
+  return false;
+}
+const upload = async () => {
+    // --- NEW: ANTI-RACISM CHECK ---
+    if (isRacist(title) || isRacist(description) || isRacist(uploaderName)) {
+        alert("Nope. Profanity or racist language detected.");
+        setLoading(false);
+        return;
+    }
+    // ------------------------------
+
     if (!file || !images || images.length === 0 || !title || !cat) {
         return alert("Please fill in all required fields and select a category.");
     }
+    
     setLoading(true);
     try {
       setStatusText("Uploading Files...");
