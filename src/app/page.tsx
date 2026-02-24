@@ -3,89 +3,54 @@ import { createClient } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-const ROOT_ADMIN = "thatonedudetsts"
+
+// Change this to whatever password you want to use for deleting things
+const SECRET_PASSWORD = "dfgtrecvh6405" 
 
 export default function Home() {
   const [builds, setBuilds] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
-  const [user, setUser] = useState<any>(null)
-  const [role, setRole] = useState('') // 'admin' | 'mod' | ''
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [setupFilter, setSetupFilter] = useState<'All' | 'Setup' | 'NotSetup'>('All')
   const [selectedBuild, setSelectedBuild] = useState<any>(null)
-  const [banStep, setBanStep] = useState(0)
 
   useEffect(() => {
     fetchData()
-    supabase.auth.getUser().then(async ({ data }) => {
-        if(data.user) {
-            setUser(data.user)
-            // Check Role
-            const discordID = data.user.user_metadata.provider_id
-            const discordName = data.user.user_metadata.full_name || data.user.user_metadata.custom_claims?.global_name
-            
-            const { data: roleData } = await supabase.from('user_roles').select('role').eq('discord_id', discordID).single()
-            
-            if (discordName === ROOT_ADMIN) setRole('admin')
-            else if (roleData) setRole(roleData.role)
-        }
-    })
   }, [])
 
   async function fetchData() {
-    const { data: banned } = await supabase.from('banned_users').select('discord_id')
-    const bannedIds = banned?.map(b => b.discord_id) || []
-
     const { data: bData } = await supabase.from('builds').select('*').order('created_at', { ascending: false })
-    if (bData) setBuilds(bData.filter(b => !bannedIds.includes(b.discord_id)))
+    if (bData) setBuilds(bData)
     
     const { data: cData } = await supabase.from('categories').select('*').order('name', { ascending: true })
     if (cData) setCategories(cData)
   }
 
-  // --- ACTIONS ---
-
-  async function banUser(discordId: string, username: string) {
-    await supabase.from('banned_users').insert([{ discord_id: discordId, username: username }])
-    alert(`${username} banned.`)
-    setBanStep(0); setSelectedBuild(null); fetchData()
-  }
-
-  // NUCLEAR OPTION: Delete ALL builds by this user
-  async function wipeUser(targetDiscordId: string) {
-    if(!confirm("⚠️ WARNING: This will delete EVERY build this user has ever posted.\n\nAre you sure?")) return
-
-    // 1. Get all their files to delete from storage
-    const { data: userBuilds } = await supabase.from('builds').select('*').eq('discord_id', targetDiscordId)
-    if(userBuilds) {
-        let filesToDelete: string[] = []
-        userBuilds.forEach(b => {
-            filesToDelete.push(b.file_url)
-            filesToDelete.push(...b.images)
-        })
-        if(filesToDelete.length > 0) {
-            await supabase.storage.from('build-bucket').remove(filesToDelete)
-        }
-    }
-
-    // 2. Delete from DB
-    await supabase.from('builds').delete().eq('discord_id', targetDiscordId)
-    
-    // 3. Ban them too
-    await supabase.from('banned_users').insert([{ discord_id: targetDiscordId, username: "Wiped User" }])
-    
-    alert("User Nuked.")
-    setBanStep(0); setSelectedBuild(null); fetchData()
-  }
-
+  // Admin delete via simple password prompt
   async function handleDelete(build: any) {
-    if (!confirm("Delete this build?")) return
-    const { error } = await supabase.from('builds').delete().eq('id', build.id)
-    if (!error) {
-      await supabase.storage.from('build-bucket').remove([...build.images, build.file_url])
-      fetchData(); setSelectedBuild(null)
+    const pass = prompt("Enter Admin Password to delete this post:")
+    if (pass !== SECRET_PASSWORD) {
+        alert("Incorrect password.")
+        return
     }
+    
+    // We assume you turned off RLS for admins, or you do this via Supabase dashboard.
+    // NOTE: If Supabase still blocks this, you have to run step 5 below!
+    const { error } = await supabase.from('builds').delete().eq('id', build.id)
+    
+    if (error) {
+      alert("Error deleting build: " + error.message)
+      return
+    }
+    
+    const filesToDelete = [build.file_url, ...(build.images || [])].filter(Boolean)
+    if (filesToDelete.length > 0) {
+      await supabase.storage.from('build-bucket').remove(filesToDelete)
+    }
+    
+    fetchData()
+    setSelectedBuild(null)
   }
 
   async function downloadBuild(e: any, build: any) {
@@ -118,14 +83,8 @@ export default function Home() {
               </button>
            </div>
            
-           {user ? (
-             <div className="flex gap-3">
-               {(role === 'admin' || role === 'mod') && <a href="/admin" className="bg-slate-800 border border-slate-700 px-4 py-4 rounded-2xl font-black hover:bg-slate-700 transition-all text-xs uppercase">Dashboard</a>}
-               <a href="/upload" className="bg-blue-600 px-6 py-4 rounded-2xl font-black italic hover:scale-105 transition-all shadow-lg">UPLOAD</a>
-             </div>
-           ) : (
-             <a href="/login" className="bg-white text-black px-8 py-4 rounded-2xl font-black">LOGIN</a>
-           )}
+           {/* ALWAYS SHOW UPLOAD NOW */}
+           <a href="/upload" className="bg-blue-600 px-6 py-4 rounded-2xl font-black italic hover:scale-105 transition-all shadow-lg">UPLOAD</a>
         </div>
       </div>
 
@@ -149,18 +108,20 @@ export default function Home() {
             <div className="p-6">
               <h2 className="text-2xl font-black italic truncate mb-4">{b.title}</h2>
               <button onClick={(e) => downloadBuild(e, b)} className="w-full bg-[#1c1d26] hover:bg-blue-600 py-4 rounded-2xl font-black text-xs transition-all cursor-pointer uppercase tracking-widest">Download .build</button>
-              <div className="flex items-center gap-3 mt-6 pt-4 border-t border-slate-800/50">
-                 <img src={b.author_img} className="w-6 h-6 rounded-full border border-blue-500/30" />
-                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{b.username}</p>
-              </div>
+<div className="flex items-center gap-3 mt-6 pt-4 border-t border-slate-800/50">
+   <div className="w-6 h-6 rounded-full bg-slate-800 border border-blue-500/30 flex items-center justify-center">
+      <span className="text-[10px]">👤</span>
+   </div>
+   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{b.username || "Anonymous"}</p>
+</div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* LIGHTBOX & MOD TOOLS */}
+      {/* LIGHTBOX */}
       {selectedBuild && (
-        <div className="fixed inset-0 bg-black/98 z-50 flex items-center justify-center p-6 backdrop-blur-xl" onClick={() => {setSelectedBuild(null); setBanStep(0)}}>
+        <div className="fixed inset-0 bg-black/98 z-50 flex items-center justify-center p-6 backdrop-blur-xl" onClick={() => setSelectedBuild(null)}>
           <div className="max-w-6xl w-full bg-[#0a0b10] border border-slate-800 p-8 md:p-12 rounded-[50px] shadow-2xl overflow-hidden flex flex-col md:flex-row gap-10 relative" onClick={e => e.stopPropagation()}>
             <button onClick={() => setSelectedBuild(null)} className="absolute top-8 right-10 text-gray-600 hover:text-white text-5xl cursor-pointer">×</button>
             <div className="flex-1 overflow-y-auto max-h-[75vh] space-y-6 pr-4 custom-scrollbar">
@@ -172,9 +133,9 @@ export default function Home() {
                 <div className="mb-8">
                     <h2 className="text-4xl font-black italic tracking-tighter text-blue-500 mb-2 leading-none uppercase">{selectedBuild.title}</h2>
                     <div className="flex items-center gap-3 mb-6 bg-slate-900/50 p-3 rounded-2xl border border-slate-800/50 w-fit">
-                        <img src={selectedBuild.author_img} className="w-8 h-8 rounded-full border-2 border-blue-600 shadow-lg" />
+                        <img src={selectedBuild.author_img || "https://i.imgur.com/6NBHkSg.png"} className="w-8 h-8 rounded-full border-2 border-blue-600 shadow-lg" />
                         <div>
-                           <p className="text-blue-400 font-black uppercase text-[10px] tracking-widest">{selectedBuild.username}</p>
+                           <p className="text-blue-400 font-black uppercase text-[10px] tracking-widest">{selectedBuild.username || "Anonymous"}</p>
                         </div>
                     </div>
                 </div>
@@ -185,23 +146,8 @@ export default function Home() {
                 <div className="flex flex-col gap-3">
                     <button onClick={(e) => downloadBuild(e, selectedBuild)} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-[25px] font-black text-xl transition-all shadow-xl cursor-pointer">DOWNLOAD FILE</button>
                     
-                    {/* MOD ACTIONS */}
-                    {(role === 'admin' || role === 'mod' || user?.id === selectedBuild.user_id) && (
-                      <div className="mt-4 p-4 border border-red-900/20 bg-red-900/5 rounded-3xl flex flex-col items-center gap-2">
-                        
-                        {/* ONLY ADMIN CAN BAN/WIPE */}
-                        {role === 'admin' && (
-                            <>
-                                {banStep === 0 && <button onClick={() => setBanStep(1)} className="text-red-600 text-[10px] font-black hover:text-red-500 cursor-pointer uppercase tracking-widest">Ban & Wipe User</button>}
-                                {banStep === 1 && <button onClick={() => setBanStep(2)} className="bg-red-600 text-white px-6 py-2 rounded-xl text-xs font-black cursor-pointer animate-pulse">CONFIRM WIPE ALL?</button>}
-                                {banStep === 2 && <button onClick={() => wipeUser(selectedBuild.discord_id)} className="bg-red-700 text-white px-6 py-2 rounded-xl text-xs font-black cursor-pointer">EXECUTE</button>}
-                            </>
-                        )}
-                        
-                        {/* MODS & ADMINS CAN DELETE */}
-                        <button onClick={() => handleDelete(selectedBuild)} className="text-gray-600 hover:text-white text-[10px] font-bold uppercase cursor-pointer">Delete Post</button>
-                      </div>
-                    )}
+                    {/* SECRET DELETE BUTTON */}
+                    <button onClick={() => handleDelete(selectedBuild)} className="text-gray-600 hover:text-white text-[10px] font-bold uppercase cursor-pointer mt-4">Admin Delete</button>
                 </div>
             </div>
           </div>
