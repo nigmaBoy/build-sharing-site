@@ -88,13 +88,39 @@ function getEditDistance(a: string, b: string) {
 }
 
 // --- INTELLIGENT RACISM FILTER ---
+// --- HELPER: CALCULATE WORD DISTANCE (LEVENSTEIN) ---
+// Returns how many letters need to change to make the words match
+function getEditDistance(a: string, b: string) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) { matrix[i] = [i]; }
+  for (let j = 0; j <= a.length; j++) { matrix[0][j] = j; }
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+// --- THE FINAL, DEFINITIVE RACISM FILTER ---
 function isRacist(text: string) {
   if (!text) return false;
 
-  // 1. NORMALIZE & DECOMPOSE (The "Black Hole" cleaner)
-  let clean = text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
-
-  // 2. SUBSTITUTION MAP (Maps symbols/foreign chars to English)
+  // STEP 1: DEEP CLEANING
+  // This cleans the entire string first to handle cases like "n i g g e r"
+  // which will become one word: "nigger"
+  let cleanText = text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  
   const map: { [key: string]: RegExp } = {
     'a': /[a@4xàáâäåæāăąǎǟǡαɑａ𝐚𝑎𝒂𝓪𝔞𝕒𝖆𝚊𝛂𝟈ΔΛ∂]/g,
     'b': /[bßβɓʙｂ𝐛𝑏𝒃𝓫𝔟𝕓𝖇𝗯𝘣𝙗𝚋]/g,
@@ -116,58 +142,36 @@ function isRacist(text: string) {
     'u': /[uùúûüũūŭůűųǔǖǘǚǜμυｕ𝐮𝑢𝒖𝓾𝔲𝕦𝖚𝘂𝘶𝙪𝚞]/g,
     'v': /[vʋνｖ𝐯𝑣𝒗𝓿𝔳𝕧𝖛𝘃𝘷𝙫𝚟]/g,
     'w': /[wŵｗ𝐰𝑤𝒘𝔀𝔴𝕨𝖜𝘄𝘸𝙬𝚠]/g,
-    'x': /[x×χｘ𝐱𝑥𝒙𝔁𝔵𝕩𝖝𝖝𝙭𝚡]/g,
+    'x': /[x×χｘ𝐱𝑥𝒙𝔁𝔵𝕩𝖝𝘅𝖝𝙭𝚡]/g,
     'y': /[yýÿŷｙ𝐲𝑦𝒚𝔂𝔶𝕪𝖞𝘆𝘺𝙮𝚢]/g,
     'z': /[zźżžζｚ𝐳𝑧𝒛𝔷𝕫𝖟𝘇𝘻𝙯𝚣]/g
   };
 
   for (const [char, regex] of Object.entries(map)) {
-    clean = clean.replace(regex, char);
+    cleanText = cleanText.replace(regex, char);
   }
   
-  clean = clean.toLowerCase().replace(/[^a-z]/g, '');
+  // STEP 2: SPLIT INTO WORDS
+  // Any sequence of non-letter characters is treated as a word separator.
+  const words = cleanText.toLowerCase().split(/[^a-z]+/);
 
-  // 3. REGEX CHECK (Catches expanded words like "niiiigggggeerrr")
-  const regexList = [
-    /n+[i1]+g+[gq]*[a4e3u]+r*/, 
-    /r+[e3]+t+[a4]+r+d+/,
-    /f+[a4]+g+[o0]*[t7]*/,
-    /k+[i1]+k+[e3]+/,
-    /c+o+o+n+/,
-    /b+[e3]+a+n+[e3]+r+/
-  ];
-
-  for (const pattern of regexList) {
-    if (pattern.test(clean)) return true;
-  }
-
-  // 4. FUZZY MATCHING (Catches "1 letter off" variations)
-  // We check against these base words
-  const baseWords = ["nigger", "nigga", "retard", "faggot", "kike", "beaner", "coon"];
-
-  // Loop through the input string to find hidden words
-  // e.g. "myniggxrbuild" -> we scan for "niggxr"
+  // STEP 3: CHECK EACH WORD
+  const badWords = ["nigger", "nigga", "retard", "faggot", "kike", "beaner", "coon"];
   
-  // NOTE: Scanning every substring is slow, so we check the whole string 
-  // and specific chunks if the string is short (like a username).
-  
-  for (const badWord of baseWords) {
-    // Optimization: Don't check if length is wildly different
-    if (Math.abs(clean.length - badWord.length) > 2) {
-       // If the text is long (description), we rely on Regex. 
-       // Fuzzy matching is mostly for short Titles/Names.
-       if (clean.length > 15) continue; 
+  for (const word of words) {
+    if (word.length < 3) continue; // Skip tiny words like "a", "i"
+
+    // FUZZY CHECK: If the word is "1 letter off" from a bad word, block it.
+    for (const badWord of badWords) {
+      // Safety Check: First letter must be similar to avoid false positives (e.g. bigger vs nigger)
+      if (word[0] !== badWord[0]) continue;
+      
+      const distance = getEditDistance(word, badWord);
+      
+      if (distance <= 1) { // 0 for exact match, 1 for one letter off
+        return true;
+      }
     }
-
-    // SAFETY CHECK: First letter MUST match.
-    // "Bigger" (starts with B) vs "Nigger" (starts with N) -> Safe.
-    // "Niggxr" (starts with N) vs "Nigger" (starts with N) -> BANNED.
-    if (clean[0] !== badWord[0]) continue;
-
-    const distance = getEditDistance(clean, badWord);
-    
-    // If only 1 character is different (or 0), BAN IT.
-    if (distance <= 1) return true;
   }
 
   return false;
