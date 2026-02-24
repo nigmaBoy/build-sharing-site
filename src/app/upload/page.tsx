@@ -50,61 +50,67 @@ export default function Upload() {
 // --- RACISM FILTER (The "Zero Tolerance" Version) ---
 // --- ADVANCED RACISM FILTER (Detects Substitutions) ---
 // --- NUCLEAR RACISM FILTER (Handles Unicode/Homoglyphs) ---
+// --- THE "BLACK HOLE" RACISM FILTER ---
+// Absorbs every weird font, symbol, and language trick.
 function isRacist(text: string) {
   if (!text) return false;
-  
-  // 1. Normalize strange unicode accents (e.g., é -> e)
-  let clean = text.normalize('NFKD');
 
-  // 2. HOMOGLYPH MAP: Convert lookalikes to Latin letters
-  // This catches Cyrillic, Greek, Armenian, and Leetspeak
-  const substitutions: { [key: string]: RegExp } = {
-    'a': /[a@àáâäåαаΑ@4x]/g,      // Includes 4, @, x, Cyrillic 'a'
-    'b': /[bßΒβ]/g,
-    'c': /[cçςсС(]/g,             // Includes (
-    'd': /[d∂]/g,
-    'e': /[eéèêëεєеЕ3]/g,         // Includes 3, Cyrillic 'e'
-    'f': /[fƒ]/g,
-    'g': /[gĝ]/g,
-    'h': /[hнН]/g,
-    'i': /[iíìïîιіІ!|1j]/g,       // Includes 1, !, |, j, Cyrillic 'i'
-    'k': /[kκкК]/g,
-    'l': /[lι1]/g,
-    'm': /[mмМ]/g,
-    'n': /[nñոηпП]/g,             // Includes Armenian 'vo' (ո)
-    'o': /[oóòöôσоО0]/g,          // Includes 0, Cyrillic 'o'
-    'p': /[pрР]/g,
-    'r': /[rгГ]/g,
-    's': /[sš$5]/g,               // Includes $, 5
-    't': /[tτтТ7+]/g,             // Includes 7, +
-    'u': /[uüúùûսμυ]/g,           // Includes Armenian 'se' (ս)
-    'v': /[vν]/g,
-    'w': /[wω]/g,
-    'x': /[xχ×]/g,
-    'y': /[yÿýуУ]/g,
-    'z': /[zž]/g
+  // STEP 1: DECOMPOSE (Split accents from letters)
+  // "Ǐ" becomes "I" + "ˇ"
+  let clean = text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+
+  // STEP 2: LOWERCASE EVERYTHING
+  clean = clean.toLowerCase();
+
+  // STEP 3: THE CONFUSABLES MAP
+  // This maps the "Fancy Fonts" (Mathematical Bold, Script, etc) back to ASCII
+  // It also maps lookalikes from other languages (IPA, Cyrillic, Greek)
+  const map: { [key: string]: RegExp } = {
+    'a': /[a@4xàáâäåæāăąǎǟǡαɑａ𝐚𝑎𝒂𝓪𝔞𝕒𝖆𝚊𝛂𝟈]/g,
+    'b': /[bßβɓʙｂ𝐛𝑏𝒃𝓫𝔟𝕓𝖇𝗯𝘣𝙗𝚋]/g,
+    'c': /[cçćĉċčςｃ𝐜𝑐𝒄𝓬𝔠𝕔𝖈𝗰𝘤𝙘𝚌]/g,
+    'd': /[dďđɖɗ𝐝𝑑𝒅𝓭𝔡𝕕𝖉𝗱𝘥𝙙𝚍]/g,
+    'e': /[e3€èéêëēĕėęěεєеэз𝓮𝔢𝕖𝖊𝗲𝘦𝙚𝚎]/g,
+    'f': /[fƒ𝐟𝑓𝒇𝓯𝔣𝕗𝖋𝗳𝘧𝙛𝚏]/g,
+    'g': /[gĝğġģǥǧɠｇ𝐠𝑔𝒈𝓰𝔤𝕘𝖌𝗴𝘨𝙜𝚐]/g,
+    'h': /[hĥħɥʜｈ𝐡𝒉𝓱𝔥𝕙𝖍𝗵𝘩𝙝𝚑]/g,
+    'i': /[i1!|jíìïîīįǐĭỉịιꙇاｉ𝐢𝑖𝒊𝒾𝓲𝔦𝕚𝖎𝗶𝘪𝙞𝚒]/g,
+    'k': /[kķĸƙκｋ𝐤𝑘𝒌𝓀𝓴𝔨𝕜𝖐𝗸𝘬𝙠𝚔]/g,
+    'l': /[lĺļľŀłℓｌ𝐥𝑙𝒍𝓵𝔩𝕝𝖑𝗹𝘭𝙡𝚕]/g,
+    'm': /[mḿṁṃɱｍ𝐦𝑚𝒎𝓶𝔪𝕞𝖒𝗺𝘮𝙢𝚖]/g,
+    'n': /[nñńņňŉŋɳɴｎ𝐧𝘯𝙣𝒏𝓷𝔫𝕟𝟄𝐧𝑛𝒏𝓷𝔫𝕟𝖓𝗻𝘯𝙣𝚗]/g,
+    'o': /[o0òóôõöōŏőơǒǫøǿοσоｏ𝐨𝑜𝒐𝓸𝔬𝕠𝖔𝗼𝘰𝙤𝚘]/g,
+    'p': /[pṕṗρｐ𝐩𝑝𝒑𝓹𝔭𝕡𝖕𝗽𝘱𝙥𝚙]/g,
+    'r': /[rŕŗřȑȓɼɾｒ𝐫𝑟𝒓𝓻𝔯𝕣𝖗𝗿𝘳𝙧𝚛]/g,
+    's': /[sśŝşšſșςｓ𝐬𝑠𝒔𝓼𝔰𝕤𝖘𝘀𝘴𝙨𝚜$5]/g,
+    't': /[t7+ţťŧțτтｔ𝐭𝑡𝒕𝓽𝔱𝕥𝖙𝘁𝘵𝙩𝚝]/g,
+    'u': /[uùúûüũūŭůűųǔǖǘǚǜμυｕ𝐮𝑢𝒖𝓾𝔲𝕦𝖚𝘂𝘶𝙪𝚞]/g,
+    'v': /[vʋνｖ𝐯𝑣𝒗𝓿𝔳𝕧𝖛𝘃𝘷𝙫𝚟]/g,
+    'w': /[wŵｗ𝐰𝑤𝒘𝔀𝔴𝕨𝖜𝘄𝘸𝙬𝚠]/g,
+    'x': /[x×χｘ𝐱𝑥𝒙𝔁𝔵𝕩𝖝𝘅𝖝𝙭𝚡]/g,
+    'y': /[yýÿŷｙ𝐲𝑦𝒚𝔂𝔶𝕪𝖞𝘆𝘺𝙮𝚢]/g,
+    'z': /[zźżžζｚ𝐳𝑧𝒛𝔷𝕫𝖟𝘇𝘻𝙯𝚣]/g
   };
 
-  // Run the replacements
-  for (const [char, regex] of Object.entries(substitutions)) {
+  for (const [char, regex] of Object.entries(map)) {
     clean = clean.replace(regex, char);
   }
 
-  // 3. Lowercase & Remove anything that isn't a letter
-  clean = clean.toLowerCase().replace(/[^a-z]/g, '');
+  // STEP 4: NUKE NON-LETTERS (Remove spaces, dots, dashes, emojis)
+  // "n i g g a" -> "nigga"
+  clean = clean.replace(/[^a-z]/g, '');
 
-  // 4. THE PATTERNS (Detects repeated letters)
+  // STEP 5: PATTERN MATCHING
   const patterns = [
-    /n+i+g+e+r+/,   // Matches: nigger, niger, n!gger, n1gger
-    /n+i+g+a+/,     // Matches: nigga, njgga, nigggga, niga
-    /r+e+t+a+r+d+/, // Matches: retard, r3t4rd, rctard
-    /f+a+g+/,       // Matches: fag, faggot, fxggot
-    /k+i+k+e+/,     // Matches: kike
-    /c+o+o+n+/,     // Matches: coon
-    /b+e+a+n+e+r+/  // Matches: beaner
+    /n+[il1]+g+[e3]+r+/,    // nigger
+    /n+[il1]+g+[a4]+/,      // nigga, nigggga
+    /r+[e3]+t+[a4]+r+d+/,   // retard
+    /f+[a4]+g+/,            // fag, faggot
+    /k+[i1]+k+[e3]+/,       // kike
+    /c+o+o+n+/,             // coon
+    /b+[e3]+a+n+[e3]+r+/    // beaner
   ];
 
-  // 5. Check
   for (const pattern of patterns) {
     if (pattern.test(clean)) return true;
   }
