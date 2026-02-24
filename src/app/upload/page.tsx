@@ -48,39 +48,71 @@ export default function Upload() {
     }
   }
 // --- RACISM FILTER (The "Zero Tolerance" Version) ---
+// --- ADVANCED RACISM FILTER (Detects Substitutions) ---
+// --- NUCLEAR RACISM FILTER (Handles Unicode/Homoglyphs) ---
 function isRacist(text: string) {
   if (!text) return false;
   
-  // 1. Normalize: Lowercase + remove ALL spaces, numbers, and symbols
-  // "n i g g a" -> "nigga"
-  // "r.e.t.a.r.d" -> "retard"
-  // "f@g" -> "fg" (Wait, strictly removing symbols might break leetspeak, 
-  // so let's keep it simple: remove just spaces and dots/dashes)
-  const clean = text.toLowerCase().replace(/[^a-z]/g, '');
+  // 1. Normalize strange unicode accents (e.g., é -> e)
+  let clean = text.normalize('NFKD');
 
-  // 2. The Regex Patterns
-  // The "+" sign means "one or more of this letter".
+  // 2. HOMOGLYPH MAP: Convert lookalikes to Latin letters
+  // This catches Cyrillic, Greek, Armenian, and Leetspeak
+  const substitutions: { [key: string]: RegExp } = {
+    'a': /[a@àáâäåαаΑ@4x]/g,      // Includes 4, @, x, Cyrillic 'a'
+    'b': /[bßΒβ]/g,
+    'c': /[cçςсС(]/g,             // Includes (
+    'd': /[d∂]/g,
+    'e': /[eéèêëεєеЕ3]/g,         // Includes 3, Cyrillic 'e'
+    'f': /[fƒ]/g,
+    'g': /[gĝ]/g,
+    'h': /[hнН]/g,
+    'i': /[iíìïîιіІ!|1j]/g,       // Includes 1, !, |, j, Cyrillic 'i'
+    'k': /[kκкК]/g,
+    'l': /[lι1]/g,
+    'm': /[mмМ]/g,
+    'n': /[nñոηпП]/g,             // Includes Armenian 'vo' (ո)
+    'o': /[oóòöôσоО0]/g,          // Includes 0, Cyrillic 'o'
+    'p': /[pрР]/g,
+    'r': /[rгГ]/g,
+    's': /[sš$5]/g,               // Includes $, 5
+    't': /[tτтТ7+]/g,             // Includes 7, +
+    'u': /[uüúùûսμυ]/g,           // Includes Armenian 'se' (ս)
+    'v': /[vν]/g,
+    'w': /[wω]/g,
+    'x': /[xχ×]/g,
+    'y': /[yÿýуУ]/g,
+    'z': /[zž]/g
+  };
+
+  // Run the replacements
+  for (const [char, regex] of Object.entries(substitutions)) {
+    clean = clean.replace(regex, char);
+  }
+
+  // 3. Lowercase & Remove anything that isn't a letter
+  clean = clean.toLowerCase().replace(/[^a-z]/g, '');
+
+  // 4. THE PATTERNS (Detects repeated letters)
   const patterns = [
-    // Matches: nigger, niiigger, niger, n1gger
-    /n+[il1]+g+[e3]+r+/, 
-    
-    // Matches: nigga, nigggga, niga, niiigggaaaa
-    /n+[il1]+g+[a4]+/,   
-    
-    // Matches: retard, reeetard, rctard
-    /r+[ec3]+t+a+r+d+/, 
-    
-    // Matches: fag, faggot, faaag, fgt
-    /f+[a4]+g+/
+    /n+i+g+e+r+/,   // Matches: nigger, niger, n!gger, n1gger
+    /n+i+g+a+/,     // Matches: nigga, njgga, nigggga, niga
+    /r+e+t+a+r+d+/, // Matches: retard, r3t4rd, rctard
+    /f+a+g+/,       // Matches: fag, faggot, fxggot
+    /k+i+k+e+/,     // Matches: kike
+    /c+o+o+n+/,     // Matches: coon
+    /b+e+a+n+e+r+/  // Matches: beaner
   ];
 
-  // 3. Check the cleaned text against patterns
+  // 5. Check
   for (const pattern of patterns) {
     if (pattern.test(clean)) return true;
   }
   
   return false;
 }
+
+
 const upload = async () => {
     // --- NEW: ANTI-RACISM CHECK ---
     if (isRacist(title) || isRacist(description) || isRacist(uploaderName)) {
