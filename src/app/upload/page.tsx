@@ -57,6 +57,7 @@ export default function Upload() {
 // --- INTELLIGENT RACISM FILTER ---
 // --- HELPER: CALCULATE WORD DISTANCE (LEVENSTEIN) ---
 // Returns how many letters need to change to make the words match
+// --- HELPER: CALCULATE WORD DISTANCE (LEVENSTEIN) ---
 function getEditDistance(a: string, b: string) {
   if (a.length === 0) return b.length;
   if (b.length === 0) return a.length;
@@ -79,14 +80,16 @@ function getEditDistance(a: string, b: string) {
   return matrix[b.length][a.length];
 }
 
-// --- THE FINAL, DEFINITIVE RACISM FILTER ---
+// --- THE FINAL, "ANTI-REVERSAL" RACISM FILTER ---
 function isRacist(text: string) {
   if (!text) return false;
 
-  // STEP 1: DEEP CLEANING
-  // This cleans the entire string first to handle cases like "n i g g e r"
-  // which will become one word: "nigger"
-  let cleanText = text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  // STEP 0: NUKE INVISIBLE CHARACTERS
+  // This removes the "reverse text" BiDi characters and other zero-width junk.
+  let sanitizedText = text.replace(/[\u200B-\u200D\u202A-\u202E\uFEFF]/g, '');
+
+  // STEP 1: DEEP CLEANING (Homoglyphs, Leetspeak, Fonts)
+  let cleanText = sanitizedText.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
   
   const map: { [key: string]: RegExp } = {
     'a': /[a@4xàáâäåæāăąǎǟǡαɑａ𝐚𝑎𝒂𝓪𝔞𝕒𝖆𝚊𝛂𝟈ΔΛ∂]/g,
@@ -119,24 +122,28 @@ function isRacist(text: string) {
   }
   
   // STEP 2: SPLIT INTO WORDS
-  // Any sequence of non-letter characters is treated as a word separator.
   const words = cleanText.toLowerCase().split(/[^a-z]+/);
 
-  // STEP 3: CHECK EACH WORD
+  // STEP 3: CHECK EACH WORD (FORWARD AND BACKWARD)
   const badWords = ["nigger", "nigga", "retard", "faggot", "kike", "beaner", "coon"];
   
   for (const word of words) {
-    if (word.length < 3) continue; // Skip tiny words like "a", "i"
+    if (word.length < 3) continue;
 
-    // FUZZY CHECK: If the word is "1 letter off" from a bad word, block it.
+    const reversedWord = word.split('').reverse().join('');
+
     for (const badWord of badWords) {
-      // Safety Check: First letter must be similar to avoid false positives (e.g. bigger vs nigger)
-      if (word[0] !== badWord[0]) continue;
-      
-      const distance = getEditDistance(word, badWord);
-      
-      if (distance <= 1) { // 0 for exact match, 1 for one letter off
-        return true;
+      // Check original word
+      if (word[0] === badWord[0]) {
+        if (getEditDistance(word, badWord) <= 1) {
+          return true;
+        }
+      }
+      // Check REVERSED word
+      if (reversedWord[0] === badWord[0]) {
+        if (getEditDistance(reversedWord, badWord) <= 1) {
+          return true;
+        }
       }
     }
   }
@@ -214,9 +221,9 @@ const upload = async () => {
                 <input className="w-full bg-[#0a0b10] border border-slate-800 p-4 rounded-2xl outline-none focus:border-blue-600 transition-all font-bold" placeholder="e.g. Turbo Mech" onChange={e => setTitle(e.target.value)} />
             </div>
             <div className="md:w-36">
-                <label className="text-[10px] font-black text-gray-500 mb-2 block uppercase tracking-widest text-center">Set Up?</label>
+                <label className="text-[10px] font-black text-gray-500 mb-2 block uppercase tracking-widest text-center">Is Set Up?</label>
                 <button onClick={() => setIsSetup(!isSetup)} className={`w-full py-4 rounded-2xl font-black text-xs border transition-all cursor-pointer ${isSetup ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'bg-[#0a0b10] border-slate-800 text-gray-600'}`}>
-                    {isSetup ? 'READY' : 'NO'}
+                    {isSetup ? 'YES' : 'NO'}
                 </button>
             </div>
           </div>
